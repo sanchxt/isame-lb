@@ -1,0 +1,75 @@
+run:
+  timeout: 5m
+  issues-exit-code: 1
+  tests: true
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+  
+  gocyclo:
+    min-complexity: 15
+  
+  golint:
+    min-confidence: 0.8
+  
+  govet:
+    check-shadowing: true
+  
+  maligned:
+    suggest-new: true
+  
+  dupl:
+    threshold: 100
+  
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+linters:
+  enable:
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Go vet
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Staticcheck
+    - typecheck     # Type checking
+    - unused        # Check for unused code
+    - gocyclo       # Check cyclomatic complexity
+    - gofmt         # Check formatting
+    - goimports     # Check import formatting
+    - goconst       # Find repeated strings
+    - dupl          # Find code duplication
+    - misspell      # Check for misspellings
+    - unparam       # Find unused function parameters
+    - gosec         # Security checker
+    - prealloc      # Find slice declarations that could be preallocated
+  
+  disable:
+    - maligned      # Deprecated
+    - golint        # Deprecated
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  
+  exclude:
+    # Allow embedding of structs
+    - "should have comment.*or be unexported"
+    # Allow magic numbers in tests
+    - "Magic number: [0-9]+"
+  
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gosec
+        - dupl
+        - goconst
