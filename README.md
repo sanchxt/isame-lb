@@ -65,7 +65,7 @@ curl http://localhost:8080/
 
 ## Project Structure
 
-```
+```txt
 ├── cmd/
 │   ├── isame-lb/        # Main load balancer server
 │   └── isame-ctl/       # CLI tool (future phases)
@@ -81,35 +81,10 @@ curl http://localhost:8080/
 └── docs/                # Documentation
 ```
 
-## Development Phases
+## Documentation
 
-### Phase 0 - Bootstrap ✅
-
-- [x] Project setup and basic HTTP server
-- [x] Development tooling
-- [x] Basic testing structure
-
-### Phase 1 - MVP HTTP Load Balancer (Planned)
-
-- [ ] Configuration system (YAML)
-- [ ] HTTP reverse proxy
-- [ ] Round-robin load balancing
-- [ ] Active health checking
-- [ ] Basic metrics (Prometheus)
-
-### Phase 2 - Advanced Features (Planned)
-
-- [ ] Multiple load balancing algorithms
-- [ ] Circuit breaker pattern
-- [ ] Retry logic
-- [ ] Rate limiting
-
-### Phase 3 - Control Plane (Planned)
-
-- [ ] REST API for management
-- [ ] Enhanced CLI tool
-- [ ] Distributed tracing
-- [ ] Advanced observability
+- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) - Development phases and roadmap
+- [Project Structure](docs/PROJECT_STRUCTURE.md) - Detailed explanation of project structure and files
 
 ## Testing
 
