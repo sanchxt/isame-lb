@@ -15,6 +15,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 - [x] Basic HTTP server with health endpoint
 
 **Deliverables:**
+
 - Basic HTTP server responding on port 8080
 - Health check endpoint (`/health`)
 - Service information endpoint (`/`)
@@ -28,6 +29,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 **Objective:** Create a minimal viable HTTP load balancer with basic functionality
 
 **Features:**
+
 - [ ] Configuration system (YAML)
 - [ ] HTTP reverse proxy functionality
 - [ ] Round-robin load balancing algorithm
@@ -36,6 +38,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 - [ ] Graceful shutdown handling
 
 **Technical Requirements:**
+
 - YAML-based configuration file
 - Support for multiple backend servers
 - Health check endpoints for backends
@@ -47,6 +50,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 **Objective:** Add production-ready features and reliability improvements
 
 **Features:**
+
 - [ ] Multiple load balancing algorithms (weighted round-robin, least connections)
 - [ ] Circuit breaker pattern for failing backends
 - [ ] Retry logic with exponential backoff
@@ -55,6 +59,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 - [ ] Request/response middleware system
 
 **Technical Requirements:**
+
 - Pluggable load balancing algorithms
 - Circuit breaker with configurable thresholds
 - Configurable retry policies
@@ -67,6 +72,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 **Objective:** Add management and observability features
 
 **Features:**
+
 - [ ] REST API for runtime configuration management
 - [ ] Enhanced CLI tool (`isame-ctl`) with full functionality
 - [ ] Distributed tracing integration
@@ -75,6 +81,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 - [ ] Admin dashboard (web UI)
 
 **Technical Requirements:**
+
 - RESTful management API
 - OpenTelemetry integration for tracing
 - Prometheus metrics with custom collectors
@@ -85,6 +92,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 ## Implementation Notes
 
 ### Phase 0 Achievements
+
 - Established clean project structure following Go conventions
 - Implemented basic HTTP server with timeout configurations
 - Created both main server binary (`isame-lb`) and CLI tool (`isame-ctl`)
@@ -92,6 +100,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 - Configured static analysis and code quality tools
 
 ### Next Steps (Phase 1)
+
 1. Design configuration schema for backend servers
 2. Implement HTTP reverse proxy functionality
 3. Add backend health checking
@@ -100,6 +109,7 @@ This document outlines the phased development approach for the Isame Load Balanc
 6. Create comprehensive test suite
 
 ### Technical Decisions
+
 - **Language:** Go (chosen for performance and concurrency features)
 - **Configuration:** YAML format for human readability
 - **Metrics:** Prometheus format for observability
