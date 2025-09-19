@@ -1,0 +1,42 @@
+# example config
+version: "1.0.0"
+service: "isame-lb"
+
+server:
+  port: 8080
+  read_timeout: "15s"
+  write_timeout: "15s"
+  idle_timeout: "60s"
+  max_header_bytes: 1048576
+
+upstreams:
+  - name: "web-servers"
+    algorithm: "round_robin"
+    backends:
+      - url: "http://localhost:3000"
+        weight: 1
+      - url: "http://localhost:3001"
+        weight: 1
+      - url: "http://localhost:3002"
+        weight: 2
+
+  - name: "api-servers"
+    algorithm: "round_robin"
+    backends:
+      - url: "http://api1.example.com:8080"
+        weight: 1
+      - url: "http://api2.example.com:8080"
+        weight: 1
+
+health:
+  enabled: true
+  interval: "30s"
+  timeout: "5s"
+  path: "/health"
+  unhealthy_threshold: 3
+  healthy_threshold: 2
+
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"

@@ -1,4 +1,55 @@
 .c*/
 @*/
 C*.md
+
+# binaries
 bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+isame-lb
+
+# test binary
+*.test
+
+# output of go coverage tool
+*.out
+
+# dependency directories
+vendor/
+
+# go workspace
+go.work
+go.work.sum
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# temp files
+*.tmp
+*.temp
+.tmp/
+
+# logs
+*.log
+logs/
+
+# env files
+.env
+.env.local
+.env.*.local

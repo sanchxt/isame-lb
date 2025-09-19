@@ -10,7 +10,9 @@ This document provides a detailed explanation of the Isame Load Balancer project
 
 - **Purpose**: Defines the Go module and its dependencies
 - **Current State**: Module name `github.com/sanchxt/isame-lb` with Go version 1.24.6
-- **Dependencies**: Currently no external dependencies (using only standard library)
+- **Dependencies**:
+  - `gopkg.in/yaml.v3 v3.0.1` - YAML configuration parsing and validation
+  - `github.com/prometheus/client_golang v1.20.5` - Prometheus metrics collection and HTTP handler
 
 **`Makefile`** - Build automation
 
@@ -44,24 +46,28 @@ This document provides a detailed explanation of the Isame Load Balancer project
 
 **`cmd/isame-lb/`** - Main load balancer server
 
-- **`main.go`** (main.go:1-41)
+- **`main.go`**
 
-  - **Purpose**: Entry point for the load balancer server
+  - **Purpose**: Entry point for the load balancer server with configuration support
   - **Functionality**:
-    - Sets up HTTP server on port 8080
-    - Implements health check endpoint (`/health`)
-    - Implements service info endpoint (`/`)
-    - Configures server timeouts (15s read/write, 60s idle)
-  - **Current State**: Simple HTTP server returning JSON responses
+    - Command-line flag parsing for configuration file (`-config`)
+    - YAML configuration loading with fallback to defaults
+    - Integrated server initialization with all Phase 1 components
+    - Proper error handling and logging
+  - **Features**:
+    - Supports both configuration file and default operation modes
+    - Graceful shutdown handling
+    - Production-ready error reporting
+  - **Usage**: `./bin/isame-lb -config=configs/example.yaml`
 
-- **`main_test.go`** (main_test.go:1-63)
+- **`main_test.go`**
   - **Purpose**: Unit tests for main server handlers
   - **Coverage**: Tests both health and root handlers
   - **Test Types**: HTTP response validation, content-type checking
 
 **`cmd/isame-ctl/`** - Command-line interface tool
 
-- **`main.go`** (main.go:1-33)
+- **`main.go`**
   - **Purpose**: CLI tool for managing the load balancer
   - **Current Commands**: `version`, `help`
   - **State**: Basic stub implementation for Phase 0
@@ -71,52 +77,138 @@ This document provides a detailed explanation of the Isame Load Balancer project
 
 **`internal/config/`** - Configuration management
 
-- **`config.go`** (config.go:1-24)
+- **`config.go`**
 
-  - **Purpose**: Configuration structure and validation
-  - **Current Structure**: Basic `Config` struct with `Version` and `Service` fields
+  - **Purpose**: Comprehensive YAML configuration management with validation
+  - **Structure**: Complete `Config` struct with all Phase 1 components:
+    - `Version`, `Service`: Basic service metadata
+    - `Server`: HTTP server configuration (port, timeouts, headers)
+    - `Upstreams`: Backend server groups with load balancing algorithms
+    - `Health`: Active health checking configuration
+    - `Metrics`: Prometheus metrics server configuration
   - **Functions**:
-    - `NewDefaultConfig()`: Creates default configuration
-    - `Validate()`: Applies defaults for empty fields
-  - **Future**: Will be extended for backend server configuration, load balancing settings
+    - `LoadConfig(path)`: Loads and validates YAML configuration from file
+    - `LoadConfigWithDefaults(path)`: Loads config or returns defaults if file missing
+    - `NewDefaultConfig()`: Creates default configuration for development
+    - `Validate()`: Comprehensive validation with smart defaults
+  - **Validation Features**: Port validation, timeout parsing, algorithm validation, backend URL validation
+  - **Error Handling**: Detailed error messages with context for troubleshooting
 
-- **`config_test.go`** (config_test.go:1-61)
-  - **Purpose**: Unit tests for configuration functionality
-  - **Test Coverage**: Default config creation, validation logic
-  - **Test Strategy**: Table-driven tests with multiple scenarios
+- **`config_test.go`**
+  - **Purpose**: Comprehensive configuration testing
+  - **Test Coverage**: YAML loading, validation, defaults, error cases
+  - **Test Strategy**: Table-driven tests covering all validation scenarios
+  - **File Testing**: Tests both successful config loading and error conditions
 
 **`internal/server/`** - HTTP server implementation
 
-- **`server.go`** (server.go:1-60)
+- **`server.go`**
 
-  - **Purpose**: Abstracted server implementation with clean architecture
-  - **Structure**: `Server` struct encapsulating config and HTTP server
+  - **Purpose**: Load balancer server orchestration and lifecycle management
+  - **Structure**: `LoadBalancerServer` struct orchestrating all Phase 1 components:
+    - Configuration management
+    - HTTP server with proper timeouts
+    - Health checker integration
+    - Metrics collection
+    - HTTP reverse proxy handler
   - **Methods**:
-    - `New()`: Creates server instance
-    - `Start()`: Starts HTTP server with routing
-    - `Shutdown()`: Graceful server shutdown
-    - Handler methods for health and root endpoints
-  - **Advantages**: More testable and modular than the main.go implementation
+    - `New()`: Creates integrated server with all components
+    - `Start()`: Starts HTTP server, health checker, and metrics server
+    - `Shutdown()`: Graceful shutdown with proper cleanup and timeouts
+    - Handler methods for health (`/health`) and status (`/status`) endpoints
+  - **Features**:
+    - Signal-based graceful shutdown (SIGINT, SIGTERM)
+    - Separate metrics server on configurable port
+    - Component lifecycle management
+    - Error handling and logging
+  - **Architecture**: Clean separation with dependency injection
 
-- **`server_test.go`** (server_test.go:1-75)
-  - **Purpose**: Comprehensive server testing
-  - **Test Coverage**: Server creation, handler functionality, HTTP responses
-  - **Testing Approach**: Uses `httptest` for HTTP handler testing
+- **`server_test.go`**
+  - **Purpose**: Server integration and lifecycle testing
+  - **Test Coverage**: Server creation, endpoint handlers, graceful shutdown
+  - **Integration Testing**: Tests component integration and HTTP routing
 
-**`internal/balancer/`** - Load balancing algorithms (Future Phase 1)
+**`internal/balancer/`** - Load balancing algorithms
 
-- **Purpose**: Will contain load balancing algorithms (round-robin, weighted, least-connections)
-- **Current State**: Empty directory, placeholder for Phase 1 development
+- **`balancer.go`**
 
-**`internal/health/`** - Health checking functionality (Future Phase 1)
+  - **Purpose**: Load balancing interface and algorithm implementations
+  - **Interface**: `LoadBalancer` with `SelectBackend()` method for pluggable algorithms
+  - **Implementation**: `RoundRobin` struct with thread-safe atomic counter
+  - **Features**:
+    - Health-aware backend selection (skips unhealthy backends)
+    - Thread-safe operation using `sync/atomic`
+    - HTTP request-aware selection (future extensibility)
+    - Comprehensive error handling for no backends/unhealthy backends
+  - **Algorithm**: Round-robin with wraparound counter
 
-- **Purpose**: Backend server health checking and monitoring
-- **Current State**: Empty directory, placeholder for Phase 1 development
+- **`balancer_test.go`**
+  - **Purpose**: Comprehensive testing for load balancing algorithms
+  - **Test Coverage**: Algorithm creation, backend selection, health awareness, thread safety
+  - **Test Strategy**: Table-driven tests with concurrent access validation
 
-**`internal/metrics/`** - Observability and metrics (Future Phase 1)
+**`internal/health/`** - Health checking functionality
 
-- **Purpose**: Prometheus metrics collection and monitoring
-- **Current State**: Empty directory, placeholder for Phase 1 development
+- **`checker.go`**
+
+  - **Purpose**: Active health checking system for backend servers
+  - **Structure**: `Checker` struct with configurable thresholds and intervals
+  - **Features**:
+    - Active HTTP health checks to configurable endpoints
+    - Configurable healthy/unhealthy thresholds with consecutive failure counting
+    - Goroutine-based concurrent health checking per backend
+    - Thread-safe status tracking using `sync.RWMutex`
+    - Graceful shutdown with proper cleanup
+  - **Health Logic**: Tracks consecutive failures/successes against thresholds
+  - **HTTP Client**: Configured with proper timeouts matching health config
+
+- **`checker_test.go`**
+  - **Purpose**: Unit tests for health checking functionality
+  - **Test Coverage**: Checker creation, backend status tracking, HTTP health checks
+  - **Mock Testing**: Uses `httptest.NewServer` for controlled health endpoint testing
+
+**`internal/metrics/`** - Observability and metrics
+
+- **`collector.go`**
+
+  - **Purpose**: Prometheus metrics collection for observability
+  - **Metrics Types**:
+    - `requestsTotal`: Counter vector (method, status, upstream)
+    - `requestDuration`: Histogram vector (method, upstream) with standard buckets
+    - `upstreamHealthy`: Gauge vector per upstream backend
+    - `connectionsActive`: Gauge for current active connections
+  - **Features**:
+    - Proper metric registration and initialization
+    - HTTP handler for `/metrics` endpoint
+    - Thread-safe metric updates
+    - Namespace and subsystem organization ("isame_lb")
+  - **Integration**: Seamless integration with HTTP proxy for automatic metric recording
+
+- **`collector_test.go`**
+  - **Purpose**: Unit tests for metrics collection functionality
+  - **Test Coverage**: Collector creation, metric recording, HTTP metrics endpoint
+  - **Validation**: Ensures proper Prometheus metric format and values
+
+**`internal/proxy/`** - HTTP reverse proxy
+
+- **`proxy.go`**
+
+  - **Purpose**: HTTP reverse proxy with load balancing integration
+  - **Structure**: `Handler` struct orchestrating load balancers, health checker, and metrics
+  - **Features**:
+    - HTTP reverse proxy using `httputil.ReverseProxy`
+    - Proper proxy header management (X-Forwarded-For, X-Forwarded-Proto, X-Forwarded-Host)
+    - Load balancer integration with health-aware backend selection
+    - Automatic metrics recording (requests, duration, errors)
+    - Error handling for no upstreams/unhealthy backends
+  - **Header Management**: Client IP extraction with X-Forwarded-For and X-Real-IP support
+  - **Service Integration**: Custom `X-Load-Balancer` header with service name
+
+- **`proxy_test.go`**
+  - **Purpose**: Comprehensive HTTP proxy testing
+  - **Test Coverage**: Proxy creation, HTTP forwarding, round-robin behavior, header management
+  - **Integration Testing**: Uses real HTTP test servers for end-to-end validation
+  - **Header Testing**: Validates all proxy headers are correctly set and forwarded
 
 ### `pkg/` - Public API/Interfaces (Future)
 
@@ -127,8 +219,18 @@ This document provides a detailed explanation of the Isame Load Balancer project
 
 ### `configs/` - Configuration Examples
 
-- **Purpose**: Will contain example YAML configuration files
-- **Current State**: Empty directory, placeholder for Phase 1
+- **`example.yaml`**
+
+  - **Purpose**: Comprehensive example configuration showing all features
+  - **Configuration**: Multiple upstreams (web-servers, api-servers) with weighted backends
+  - **Features**: Server timeouts, health checking, metrics configuration
+  - **Use Case**: Production-like setup with realistic backend configurations
+
+- **`dev.yaml`**
+  - **Purpose**: Development configuration for local testing
+  - **Configuration**: Single upstream with localhost backends
+  - **Features**: Simplified setup for development and testing
+  - **Use Case**: Local development with multiple backend instances on different ports
 
 ### `deploy/docker/` - Docker Deployment
 
@@ -168,7 +270,7 @@ This document provides a detailed explanation of the Isame Load Balancer project
 
 ### `.github/workflows/` - GitHub Actions CI/CD
 
-- **`ci.yml`** (ci.yml:1-65)
+- **`ci.yml`**
   - **Purpose**: Continuous integration pipeline
   - **Go Versions**: Tests against Go 1.22 and 1.24
   - **Pipeline Steps**:
@@ -184,39 +286,14 @@ This document provides a detailed explanation of the Isame Load Balancer project
 
 - **`settings.local.json`**: Local settings for Claude Code development environment
 
-## Architecture Patterns
-
-### Current Design Principles
-
-1. **Clean Architecture**: Separation of concerns with `internal/` packages
-2. **Testability**: Comprehensive unit tests with dependency injection
-3. **SOLID Principles**: Single responsibility, dependency inversion evident in server design
-4. **Standard Go Conventions**: Following Go project layout standards
-
-### Future Architecture (Planned)
-
-1. **Modular Load Balancing**: Pluggable algorithms in `internal/balancer/`
-2. **Health Monitoring**: Separate health checking system
-3. **Observability**: Comprehensive metrics and tracing
-4. **Configuration-Driven**: YAML-based configuration system
-
 ## Development Workflow
 
 ### Current Commands
 
 ```bash
-make build        # Build both binaries
-make test         # Run comprehensive tests
-make lint         # Full linting and static analysis
-make run          # Build and run the server
-make dev-setup    # Setup development environment
+make build
+make test
+make lint
+make run
+make dev-setup
 ```
-
-### Testing Strategy
-
-- **Unit Tests**: Each package has comprehensive test coverage
-- **HTTP Testing**: Uses `httptest` for handler testing
-- **Race Detection**: All tests run with race condition detection
-- **Table-Driven Tests**: Used for configuration validation and multiple scenarios
-
-This structure provides a solid foundation for the phased development approach, with clear separation of concerns and room for future expansion while maintaining clean architecture principles.

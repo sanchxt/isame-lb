@@ -1,40 +1,52 @@
 package main
 
 import (
-	"fmt"
+	"flag"
 	"log"
-	"net/http"
-	"time"
+	"os"
+
+	"github.com/sanchxt/isame-lb/internal/config"
+	"github.com/sanchxt/isame-lb/internal/server"
 )
 
 func main() {
-	// Health check endpoint
-	http.HandleFunc("/health", healthHandler)
+	// cli flags
+	var configFile string
+	flag.StringVar(&configFile, "config", "configs/dev.yaml", "Path to configuration file")
+	flag.Parse()
 
-	// Basic info endpoint
-	http.HandleFunc("/", rootHandler)
+	log.Println("Isame Load Balancer starting...")
 
-	addr := ":8080"
-	log.Printf("Isame Load Balancer starting on %s", addr)
-
-	server := &http.Server{
-		Addr:         addr,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+	// load config
+	cfg, err := config.LoadConfigWithDefaults(configFile)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
-	log.Fatal(server.ListenAndServe())
-}
+	// if upstreams, validate config
+	if len(cfg.Upstreams) > 0 {
+		if err := cfg.Validate(); err != nil {
+			log.Fatalf("Configuration validation failed: %v", err)
+		}
+	} else {
+		log.Println("Warning: No upstreams configured. Load balancer will return 503 for all requests.")
+	}
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"status":"ok","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
-}
+	log.Printf("Configuration loaded: %s v%s", cfg.Service, cfg.Version)
+	log.Printf("Upstreams: %d, Health checks: %v, Metrics: %v",
+		len(cfg.Upstreams), cfg.Health.Enabled, cfg.Metrics.Enabled)
 
-func rootHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"service":"isame-lb","version":"0.1.0","phase":"0"}`)
+	// create and start the server
+	srv, err := server.New(cfg)
+	if err != nil {
+		log.Fatalf("Failed to create server: %v", err)
+	}
+
+	// start the server (blocks until shutdown)
+	if err := srv.Start(); err != nil {
+		log.Fatalf("Server error: %v", err)
+	}
+
+	log.Println("Isame Load Balancer stopped")
+	os.Exit(0)
 }

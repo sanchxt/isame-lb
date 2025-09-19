@@ -1,14 +1,6 @@
 # Isame Load Balancer
 
-A high-performance HTTP load balancer written in Go, following a phased development approach.
-
-## Current Status
-
-🚧 **Phase 0 - Bootstrap** (Current)
-
-- ✅ Project structure established
-- ✅ Basic HTTP server with health endpoint
-- ✅ Development tooling (Makefile, linting, testing)
+A HTTP load balancer written in Go, featuring YAML-based configuration, health checking, metrics collection, and graceful shutdown handling.
 
 ## Quick Start
 
@@ -23,44 +15,91 @@ A high-performance HTTP load balancer written in Go, following a phased developm
 # Build the project
 make build
 
-# Run the load balancer
-make run
+# run with example configuration
+./bin/isame-lb -config=configs/example.yaml
 
-# Or run directly after building
+# run with development configuration
+./bin/isame-lb -config=configs/dev.yaml
+
+# run with defaults (no upstreams - for testing)
 ./bin/isame-lb
 ```
 
-The load balancer will start on port 8080 by default.
+### Configuration
+
+Create a YAML configuration file:
+
+```yaml
+version: "1.0.0"
+service: "my-load-balancer"
+
+server:
+  port: 8080
+
+upstreams:
+  - name: "web-servers"
+    algorithm: "round_robin"
+    backends:
+      - url: "http://localhost:3000"
+        weight: 1
+      - url: "http://localhost:3001"
+        weight: 1
+
+health:
+  enabled: true
+  interval: "30s"
+  timeout: "5s"
+  path: "/health"
+
+metrics:
+  enabled: true
+  port: 9090
+  path: "/metrics"
+```
 
 ### Development
 
 ```bash
-# Setup development environment
+# setup development environment
 make dev-setup
 
-# Run tests
+# run tests
 make test
 
-# Run linter
+# run linter
 make lint
 
-# Format code
+# format code
 make fmt
 ```
 
 ## API Endpoints
 
-- `GET /health` - Health check endpoint (returns 200 OK)
-- `GET /` - Basic service information
+### Load Balancer (Port 8080)
 
-### Example
+- `GET /health` - Load balancer health check
+- `GET /status` - Detailed status with backend health information
+- `/*` - All other requests are proxied to backend servers
+
+### Metrics Server (Port 9090)
+
+- `GET /metrics` - Prometheus metrics endpoint
+- `GET /health` - Metrics server health check
+
+### Examples
 
 ```bash
-# Check health
+# check load balancer health
 curl http://localhost:8080/health
 
-# Get service info
-curl http://localhost:8080/
+# get detailed status
+curl http://localhost:8080/status
+
+# view Prometheus metrics
+curl http://localhost:9090/metrics
+
+# send request through load balancer
+curl http://localhost:8080/api/users
 ```
 
 ## Project Structure
@@ -70,16 +109,27 @@ curl http://localhost:8080/
 │   ├── isame-lb/        # Main load balancer server
 │   └── isame-ctl/       # CLI tool (future phases)
 ├── internal/
-│   ├── config/          # Configuration management
-│   ├── server/          # HTTP server implementation
-│   ├── balancer/        # Load balancing algorithms (Phase 1)
-│   ├── health/          # Health checking (Phase 1)
-│   └── metrics/         # Observability (Phase 1)
-├── pkg/                 # Public interfaces
-├── configs/             # Example configurations
-├── deploy/docker/       # Docker deployment files
+│   ├── config/          # YAML configuration management
+│   ├── server/          # HTTP server orchestration
+│   ├── balancer/        # Load balancing algorithms
+│   ├── health/          # Active health checking
+│   ├── metrics/         # Prometheus metrics collection
+│   └── proxy/           # HTTP reverse proxy
+├── configs/             # Example YAML configurations
+│   ├── example.yaml     # Full-featured example
+│   └── dev.yaml         # Development configuration
 └── docs/                # Documentation
 ```
+
+## Architecture
+
+The load balancer follows clean architecture principles:
+
+- **Modular Design**: Each component is in its own package with clear interfaces
+- **Configuration-Driven**: YAML-based configuration with validation
+- **Health-Aware**: Automatic backend health monitoring and failover
+- **Observable**: Comprehensive Prometheus metrics
+- **Production-Ready**: Graceful shutdown, proper error handling, logging
 
 ## Documentation
 
@@ -89,19 +139,19 @@ curl http://localhost:8080/
 ## Testing
 
 ```bash
-# Run all tests
+# run all tests
 make test
 
-# Run tests with coverage
+# run tests with coverage
 go test -cover ./...
 
-# Run tests for a specific package
+# run tests for a specific package
 go test ./internal/config
 ```
 
 ## Contributing
 
-This project follows SOLID principles and emphasizes clean, testable code. See the development phases for planned features.
+This project emphasizes clean, testable code. See the development phases for planned features.
 
 ### Code Style
 
