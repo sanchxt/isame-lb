@@ -53,3 +53,17 @@ logs/
 .env
 .env.local
 .env.*.local
+
+# TLS/SSL certificates and keys (NEVER commit these!)
+*.key
+*.crt
+*.pem
+*.csr
+*.p12
+*.pfx
+*.cer
+*.der
+
+# But allow generate.sh scripts
+!certs/*/generate.sh
+!*/generate.sh
