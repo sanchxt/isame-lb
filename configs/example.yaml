@@ -1,9 +1,9 @@
-# example config
-version: "1.0.0"
-service: "isame-lb"
+version: "3.0.0"
+service: "isame-lb-with-tls"
 
 server:
   port: 8080
+  https_port: 8443
   read_timeout: "15s"
   write_timeout: "15s"
   idle_timeout: "60s"
@@ -11,21 +11,27 @@ server:
 
 upstreams:
   - name: "web-servers"
-    algorithm: "round_robin"
+    algorithm: "weighted_round_robin"
     backends:
       - url: "http://localhost:3000"
-        weight: 1
+        weight: 3 # gets 3x more traffic
       - url: "http://localhost:3001"
-        weight: 1
-      - url: "http://localhost:3002"
         weight: 2
+      - url: "http://localhost:3002"
+        weight: 1
+    rate_limit:
+      enabled: true
+      requests_per_ip: 100
+      window_size: "1m" # within 1 minute window
 
   - name: "api-servers"
-    algorithm: "round_robin"
+    algorithm: "least_connections"
     backends:
       - url: "http://api1.example.com:8080"
         weight: 1
       - url: "http://api2.example.com:8080"
+        weight: 1
+      - url: "http://api3.example.com:8080"
         weight: 1
 
 health:
@@ -40,3 +46,25 @@ metrics:
   enabled: true
   port: 9090
   path: "/metrics"
+
+circuit_breaker:
+  enabled: true
+  failure_threshold: 5
+  timeout: "60s"
+
+retry:
+  enabled: true
+  max_attempts: 3
+  initial_backoff: "100ms"
+  max_backoff: "2s"
+
+tls:
+  enabled: false # true to enable HTTPS
+  cert_file: "certs/prod/fullchain.pem"
+  key_file: "certs/prod/privkey.pem"
+  min_version: "1.2"
+  cipher_suites:
+    - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+    - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+    - "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+    - "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"

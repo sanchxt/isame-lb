@@ -182,7 +182,6 @@ func TestBackendValidation(t *testing.T) {
 }
 
 func TestLoadConfig(t *testing.T) {
-	// temp directory for test files
 	tmpDir, err := os.MkdirTemp("", "config_test")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -329,5 +328,298 @@ upstreams:
 	}
 	if config.Service != "custom-lb" {
 		t.Errorf("Expected service custom-lb, got %s", config.Service)
+	}
+}
+
+func TestTLSConfigValidation(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "tls_config_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	certPath := filepath.Join(tmpDir, "server.crt")
+	keyPath := filepath.Join(tmpDir, "server.key")
+	err = os.WriteFile(certPath, []byte("dummy cert"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create cert file: %v", err)
+	}
+	err = os.WriteFile(keyPath, []byte("dummy key"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create key file: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		config *Config
+		hasErr bool
+	}{
+		{
+			name: "TLS disabled passes validation",
+			config: &Config{
+				Server: ServerConfig{Port: 8080},
+				Upstreams: []Upstream{{
+					Name:     "test",
+					Backends: []Backend{{URL: "http://localhost:3000", Weight: 1}},
+				}},
+				TLS: TLSConfig{
+					Enabled: false,
+				},
+			},
+			hasErr: false,
+		},
+		{
+			name: "TLS enabled with valid config",
+			config: &Config{
+				Server: ServerConfig{Port: 8080, HTTPSPort: 8443},
+				Upstreams: []Upstream{{
+					Name:     "test",
+					Backends: []Backend{{URL: "http://localhost:3000", Weight: 1}},
+				}},
+				TLS: TLSConfig{
+					Enabled:  true,
+					CertFile: certPath,
+					KeyFile:  keyPath,
+				},
+			},
+			hasErr: false,
+		},
+		{
+			name: "TLS enabled without cert file",
+			config: &Config{
+				Server: ServerConfig{Port: 8080},
+				Upstreams: []Upstream{{
+					Name:     "test",
+					Backends: []Backend{{URL: "http://localhost:3000", Weight: 1}},
+				}},
+				TLS: TLSConfig{
+					Enabled: true,
+					KeyFile: keyPath,
+				},
+			},
+			hasErr: true,
+		},
+		{
+			name: "TLS enabled without key file",
+			config: &Config{
+				Server: ServerConfig{Port: 8080},
+				Upstreams: []Upstream{{
+					Name:     "test",
+					Backends: []Backend{{URL: "http://localhost:3000", Weight: 1}},
+				}},
+				TLS: TLSConfig{
+					Enabled:  true,
+					CertFile: certPath,
+				},
+			},
+			hasErr: true,
+		},
+		{
+			name: "TLS enabled with non-existent cert file",
+			config: &Config{
+				Server: ServerConfig{Port: 8080},
+				Upstreams: []Upstream{{
+					Name:     "test",
+					Backends: []Backend{{URL: "http://localhost:3000", Weight: 1}},
+				}},
+				TLS: TLSConfig{
+					Enabled:  true,
+					CertFile: "/nonexistent/cert.pem",
+					KeyFile:  keyPath,
+				},
+			},
+			hasErr: true,
+		},
+		{
+			name: "TLS enabled with non-existent key file",
+			config: &Config{
+				Server: ServerConfig{Port: 8080},
+				Upstreams: []Upstream{{
+					Name:     "test",
+					Backends: []Backend{{URL: "http://localhost:3000", Weight: 1}},
+				}},
+				TLS: TLSConfig{
+					Enabled:  true,
+					CertFile: certPath,
+					KeyFile:  "/nonexistent/key.pem",
+				},
+			},
+			hasErr: true,
+		},
+		{
+			name: "TLS enabled with valid min version",
+			config: &Config{
+				Server: ServerConfig{Port: 8080, HTTPSPort: 8443},
+				Upstreams: []Upstream{{
+					Name:     "test",
+					Backends: []Backend{{URL: "http://localhost:3000", Weight: 1}},
+				}},
+				TLS: TLSConfig{
+					Enabled:    true,
+					CertFile:   certPath,
+					KeyFile:    keyPath,
+					MinVersion: "1.2",
+				},
+			},
+			hasErr: false,
+		},
+		{
+			name: "TLS enabled with invalid min version",
+			config: &Config{
+				Server: ServerConfig{Port: 8080},
+				Upstreams: []Upstream{{
+					Name:     "test",
+					Backends: []Backend{{URL: "http://localhost:3000", Weight: 1}},
+				}},
+				TLS: TLSConfig{
+					Enabled:    true,
+					CertFile:   certPath,
+					KeyFile:    keyPath,
+					MinVersion: "1.0",
+				},
+			},
+			hasErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if (err != nil) != tt.hasErr {
+				t.Errorf("Validate() error = %v, hasErr %v", err, tt.hasErr)
+			}
+
+			if !tt.hasErr && tt.config.TLS.Enabled {
+				if tt.config.Server.HTTPSPort == 0 {
+					t.Error("HTTPS port should have default value when TLS is enabled")
+				}
+			}
+		})
+	}
+}
+
+func TestLoadConfigWithTLS(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "config_tls_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	certPath := filepath.Join(tmpDir, "server.crt")
+	keyPath := filepath.Join(tmpDir, "server.key")
+	err = os.WriteFile(certPath, []byte("dummy cert"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create cert file: %v", err)
+	}
+	err = os.WriteFile(keyPath, []byte("dummy key"), 0644)
+	if err != nil {
+		t.Fatalf("Failed to create key file: %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		yaml     string
+		hasErr   bool
+		expected func(*Config) bool
+	}{
+		{
+			name: "config with TLS enabled",
+			yaml: `
+version: "3.0.0"
+service: "test-lb-tls"
+server:
+  port: 8080
+  https_port: 8443
+upstreams:
+  - name: "api"
+    backends:
+      - url: "http://localhost:3000"
+        weight: 1
+tls:
+  enabled: true
+  cert_file: "` + certPath + `"
+  key_file: "` + keyPath + `"
+  min_version: "1.2"
+`,
+			hasErr: false,
+			expected: func(c *Config) bool {
+				return c.TLS.Enabled &&
+					c.TLS.CertFile == certPath &&
+					c.TLS.KeyFile == keyPath &&
+					c.TLS.MinVersion == "1.2" &&
+					c.Server.HTTPSPort == 8443
+			},
+		},
+		{
+			name: "config with TLS disabled",
+			yaml: `
+version: "3.0.0"
+service: "test-lb"
+server:
+  port: 8080
+upstreams:
+  - name: "api"
+    backends:
+      - url: "http://localhost:3000"
+tls:
+  enabled: false
+`,
+			hasErr: false,
+			expected: func(c *Config) bool {
+				return !c.TLS.Enabled
+			},
+		},
+		{
+			name: "config with TLS and custom cipher suites",
+			yaml: `
+version: "3.0.0"
+service: "test-lb-tls"
+server:
+  port: 8080
+  https_port: 8443
+upstreams:
+  - name: "api"
+    backends:
+      - url: "http://localhost:3000"
+tls:
+  enabled: true
+  cert_file: "` + certPath + `"
+  key_file: "` + keyPath + `"
+  cipher_suites:
+    - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+    - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+`,
+			hasErr: false,
+			expected: func(c *Config) bool {
+				return c.TLS.Enabled &&
+					len(c.TLS.CipherSuites) == 2
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configPath := filepath.Join(tmpDir, "config.yaml")
+			err := os.WriteFile(configPath, []byte(tt.yaml), 0644)
+			if err != nil {
+				t.Fatalf("Failed to write config file: %v", err)
+			}
+
+			config, err := LoadConfig(configPath)
+			if (err != nil) != tt.hasErr {
+				t.Errorf("LoadConfig() error = %v, hasErr %v", err, tt.hasErr)
+				return
+			}
+
+			if !tt.hasErr {
+				if config == nil {
+					t.Error("Expected config to be non-nil")
+					return
+				}
+				if tt.expected != nil && !tt.expected(config) {
+					t.Error("Config TLS validation failed")
+				}
+			}
+		})
 	}
 }

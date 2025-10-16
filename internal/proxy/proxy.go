@@ -10,20 +10,27 @@ import (
 	"time"
 
 	"github.com/sanchxt/isame-lb/internal/balancer"
+	"github.com/sanchxt/isame-lb/internal/circuitbreaker"
 	"github.com/sanchxt/isame-lb/internal/config"
 	"github.com/sanchxt/isame-lb/internal/health"
 	"github.com/sanchxt/isame-lb/internal/metrics"
+	"github.com/sanchxt/isame-lb/internal/ratelimit"
+	"github.com/sanchxt/isame-lb/internal/retry"
 )
 
 type Handler struct {
-	config        *config.Config
-	loadBalancers map[string]balancer.LoadBalancer
-	healthChecker *health.Checker
-	metrics       *metrics.Collector
+	config         *config.Config
+	loadBalancers  map[string]balancer.LoadBalancer
+	healthChecker  *health.Checker
+	metrics        *metrics.Collector
+	circuitBreaker *circuitbreaker.CircuitBreaker
+	retrier        *retry.Retrier
+	rateLimiters   map[string]*ratelimit.RateLimiter // per-upstream rate limiters
 }
 
 func NewHandler(cfg *config.Config, healthChecker *health.Checker, metricsCollector *metrics.Collector) (*Handler, error) {
 	loadBalancers := make(map[string]balancer.LoadBalancer)
+	rateLimiters := make(map[string]*ratelimit.RateLimiter)
 
 	for _, upstream := range cfg.Upstreams {
 		lb, err := balancer.NewLoadBalancer(upstream.Algorithm)
@@ -31,13 +38,20 @@ func NewHandler(cfg *config.Config, healthChecker *health.Checker, metricsCollec
 			return nil, fmt.Errorf("failed to create load balancer for upstream %s: %w", upstream.Name, err)
 		}
 		loadBalancers[upstream.Name] = lb
+
+		if upstream.RateLimit != nil {
+			rateLimiters[upstream.Name] = ratelimit.New(upstream.RateLimit)
+		}
 	}
 
 	return &Handler{
-		config:        cfg,
-		loadBalancers: loadBalancers,
-		healthChecker: healthChecker,
-		metrics:       metricsCollector,
+		config:         cfg,
+		loadBalancers:  loadBalancers,
+		healthChecker:  healthChecker,
+		metrics:        metricsCollector,
+		circuitBreaker: circuitbreaker.New(cfg.CircuitBreaker),
+		retrier:        retry.New(cfg.Retry),
+		rateLimiters:   rateLimiters,
 	}, nil
 }
 
@@ -55,6 +69,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	upstream := &h.config.Upstreams[0]
+
+	clientIP := getClientIP(r)
+	if rateLimiter, exists := h.rateLimiters[upstream.Name]; exists {
+		if !rateLimiter.Allow(clientIP) {
+			h.writeError(w, r, "Rate limit exceeded", http.StatusTooManyRequests, start)
+			return
+		}
+	}
+
 	lb := h.loadBalancers[upstream.Name]
 
 	var healthStatus map[string]bool
@@ -64,39 +87,69 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		healthStatus = make(map[string]bool)
 	}
 
-	selectedBackend, err := lb.SelectBackend(r, upstream.Backends, healthStatus)
+	var wrappedWriter *responseWriter
+	var lastBackendURL string
+
+	err := h.retrier.Do(func() error {
+		selectedBackend, err := lb.SelectBackend(r, upstream.Backends, healthStatus)
+		if err != nil {
+			return err
+		}
+
+		lastBackendURL = selectedBackend.URL
+
+		if !h.circuitBreaker.CanAttempt(selectedBackend.URL) {
+			log.Printf("Circuit breaker open for backend %s", selectedBackend.URL)
+			return fmt.Errorf("circuit breaker open for %s", selectedBackend.URL)
+		}
+
+		if lcLB, ok := lb.(*balancer.LeastConnections); ok {
+			lcLB.IncrementConnections(selectedBackend.URL)
+			defer lcLB.DecrementConnections(selectedBackend.URL)
+		}
+
+		backendURL, err := url.Parse(selectedBackend.URL)
+		if err != nil {
+			return fmt.Errorf("invalid backend URL: %w", err)
+		}
+
+		proxy := httputil.NewSingleHostReverseProxy(backendURL)
+
+		originalDirector := proxy.Director
+		proxy.Director = func(req *http.Request) {
+			originalDirector(req)
+			h.setProxyHeaders(req, r)
+		}
+
+		proxyErr := false
+		proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
+			log.Printf("Proxy error for backend %s: %v", selectedBackend.URL, err)
+			proxyErr = true
+		}
+
+		wrappedWriter = &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		proxy.ServeHTTP(wrappedWriter, r)
+
+		if proxyErr || wrappedWriter.statusCode >= 500 {
+			h.circuitBreaker.RecordFailure(selectedBackend.URL)
+			return fmt.Errorf("backend error: status %d", wrappedWriter.statusCode)
+		}
+
+		h.circuitBreaker.RecordSuccess(selectedBackend.URL)
+		return nil
+	})
+
 	if err != nil {
-		h.writeError(w, r, "No healthy backends available", http.StatusServiceUnavailable, start)
+		if wrappedWriter == nil || wrappedWriter.statusCode == http.StatusOK {
+			h.writeError(w, r, "Service temporarily unavailable", http.StatusServiceUnavailable, start)
+		}
 		return
 	}
 
-	backendURL, err := url.Parse(selectedBackend.URL)
-	if err != nil {
-		h.writeError(w, r, "Invalid backend URL", http.StatusInternalServerError, start)
-		return
-	}
-
-	proxy := httputil.NewSingleHostReverseProxy(backendURL)
-
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		h.setProxyHeaders(req, r)
-	}
-
-	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
-		log.Printf("Proxy error for backend %s: %v", selectedBackend.URL, err)
-		h.writeError(rw, req, "Backend error", http.StatusBadGateway, start)
-	}
-
-	wrappedWriter := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
-
-	proxy.ServeHTTP(wrappedWriter, r)
-
-	if h.metrics != nil {
+	if h.metrics != nil && wrappedWriter != nil {
 		duration := time.Since(start)
 		status := strconv.Itoa(wrappedWriter.statusCode)
-		h.metrics.RecordRequest(upstream.Name, selectedBackend.URL, r.Method, status, duration)
+		h.metrics.RecordRequest(upstream.Name, lastBackendURL, r.Method, status, duration)
 	}
 }
 

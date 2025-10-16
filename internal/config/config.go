@@ -12,17 +12,21 @@ import (
 
 // main config for the load balancer
 type Config struct {
-	Version   string        `yaml:"version" json:"version"`
-	Service   string        `yaml:"service" json:"service"`
-	Server    ServerConfig  `yaml:"server" json:"server"`
-	Upstreams []Upstream    `yaml:"upstreams" json:"upstreams"`
-	Health    HealthConfig  `yaml:"health" json:"health"`
-	Metrics   MetricsConfig `yaml:"metrics" json:"metrics"`
+	Version        string               `yaml:"version" json:"version"`
+	Service        string               `yaml:"service" json:"service"`
+	Server         ServerConfig         `yaml:"server" json:"server"`
+	Upstreams      []Upstream           `yaml:"upstreams" json:"upstreams"`
+	Health         HealthConfig         `yaml:"health" json:"health"`
+	Metrics        MetricsConfig        `yaml:"metrics" json:"metrics"`
+	CircuitBreaker CircuitBreakerConfig `yaml:"circuit_breaker" json:"circuit_breaker"`
+	Retry          RetryConfig          `yaml:"retry" json:"retry"`
+	TLS            TLSConfig            `yaml:"tls" json:"tls"`
 }
 
 // server settings
 type ServerConfig struct {
 	Port           int           `yaml:"port" json:"port"`
+	HTTPSPort      int           `yaml:"https_port" json:"https_port"`
 	ReadTimeout    time.Duration `yaml:"read_timeout" json:"read_timeout"`
 	WriteTimeout   time.Duration `yaml:"write_timeout" json:"write_timeout"`
 	IdleTimeout    time.Duration `yaml:"idle_timeout" json:"idle_timeout"`
@@ -31,9 +35,10 @@ type ServerConfig struct {
 
 // server group
 type Upstream struct {
-	Name      string    `yaml:"name" json:"name"`
-	Algorithm string    `yaml:"algorithm" json:"algorithm"`
-	Backends  []Backend `yaml:"backends" json:"backends"`
+	Name        string           `yaml:"name" json:"name"`
+	Algorithm   string           `yaml:"algorithm" json:"algorithm"`
+	Backends    []Backend        `yaml:"backends" json:"backends"`
+	RateLimit   *RateLimitConfig `yaml:"rate_limit,omitempty" json:"rate_limit,omitempty"`
 }
 
 // individual server
@@ -57,6 +62,37 @@ type MetricsConfig struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
 	Port    int    `yaml:"port" json:"port"`
 	Path    string `yaml:"path" json:"path"`
+}
+
+// rate limiting config (per upstream)
+type RateLimitConfig struct {
+	Enabled       bool          `yaml:"enabled" json:"enabled"`
+	RequestsPerIP int           `yaml:"requests_per_ip" json:"requests_per_ip"`     // max requests per IP
+	WindowSize    time.Duration `yaml:"window_size" json:"window_size"`             // sliding window duration
+}
+
+// circuit breaker config
+type CircuitBreakerConfig struct {
+	Enabled          bool          `yaml:"enabled" json:"enabled"`
+	FailureThreshold int           `yaml:"failure_threshold" json:"failure_threshold"` // consecutive failures to open circuit
+	Timeout          time.Duration `yaml:"timeout" json:"timeout"`                     // time before trying again
+}
+
+// retry config
+type RetryConfig struct {
+	Enabled        bool          `yaml:"enabled" json:"enabled"`
+	MaxAttempts    int           `yaml:"max_attempts" json:"max_attempts"`       // max retry attempts
+	InitialBackoff time.Duration `yaml:"initial_backoff" json:"initial_backoff"` // initial backoff duration
+	MaxBackoff     time.Duration `yaml:"max_backoff" json:"max_backoff"`         // max backoff duration
+}
+
+// TLS config
+type TLSConfig struct {
+	Enabled      bool     `yaml:"enabled" json:"enabled"`
+	CertFile     string   `yaml:"cert_file" json:"cert_file"`
+	KeyFile      string   `yaml:"key_file" json:"key_file"`
+	MinVersion   string   `yaml:"min_version,omitempty" json:"min_version,omitempty"` // "1.2", "1.3"
+	CipherSuites []string `yaml:"cipher_suites,omitempty" json:"cipher_suites,omitempty"`
 }
 
 // config with defaults
@@ -84,6 +120,17 @@ func NewDefaultConfig() *Config {
 			Enabled: true,
 			Port:    9090,
 			Path:    "/metrics",
+		},
+		CircuitBreaker: CircuitBreakerConfig{
+			Enabled:          true,
+			FailureThreshold: 5,
+			Timeout:          60 * time.Second,
+		},
+		Retry: RetryConfig{
+			Enabled:        true,
+			MaxAttempts:    3,
+			InitialBackoff: 100 * time.Millisecond,
+			MaxBackoff:     2 * time.Second,
 		},
 	}
 }
@@ -115,6 +162,21 @@ func (c *Config) Validate() error {
 	// validate metrics config
 	if err := c.validateMetricsConfig(); err != nil {
 		return fmt.Errorf("metrics config validation failed: %w", err)
+	}
+
+	// validate circuit breaker config
+	if err := c.validateCircuitBreakerConfig(); err != nil {
+		return fmt.Errorf("circuit breaker config validation failed: %w", err)
+	}
+
+	// validate retry config
+	if err := c.validateRetryConfig(); err != nil {
+		return fmt.Errorf("retry config validation failed: %w", err)
+	}
+
+	// validate TLS config
+	if err := c.validateTLSConfig(); err != nil {
+		return fmt.Errorf("TLS config validation failed: %w", err)
 	}
 
 	return nil
@@ -163,6 +225,11 @@ func (c *Config) validateUpstreams() error {
 			if err := c.validateBackend(backend, i, j); err != nil {
 				return err
 			}
+		}
+
+		// validate rate limit config for this upstream
+		if err := c.validateRateLimitConfig(upstream.RateLimit); err != nil {
+			return fmt.Errorf("upstream[%d] rate limit validation failed: %w", i, err)
 		}
 	}
 
@@ -217,6 +284,97 @@ func (c *Config) validateMetricsConfig() error {
 		}
 		if c.Metrics.Path == "" {
 			c.Metrics.Path = "/metrics"
+		}
+	}
+
+	return nil
+}
+
+func (c *Config) validateCircuitBreakerConfig() error {
+	if c.CircuitBreaker.Enabled {
+		if c.CircuitBreaker.FailureThreshold <= 0 {
+			c.CircuitBreaker.FailureThreshold = 5
+		}
+		if c.CircuitBreaker.Timeout <= 0 {
+			c.CircuitBreaker.Timeout = 60 * time.Second
+		}
+	}
+
+	return nil
+}
+
+func (c *Config) validateRetryConfig() error {
+	if c.Retry.Enabled {
+		if c.Retry.MaxAttempts <= 0 {
+			c.Retry.MaxAttempts = 3
+		}
+		if c.Retry.InitialBackoff <= 0 {
+			c.Retry.InitialBackoff = 100 * time.Millisecond
+		}
+		if c.Retry.MaxBackoff <= 0 {
+			c.Retry.MaxBackoff = 2 * time.Second
+		}
+		if c.Retry.InitialBackoff > c.Retry.MaxBackoff {
+			return errors.New("initial_backoff must be less than or equal to max_backoff")
+		}
+	}
+
+	return nil
+}
+
+func (c *Config) validateRateLimitConfig(rl *RateLimitConfig) error {
+	if rl != nil && rl.Enabled {
+		if rl.RequestsPerIP <= 0 {
+			return errors.New("requests_per_ip must be greater than 0")
+		}
+		if rl.WindowSize <= 0 {
+			return errors.New("window_size must be greater than 0")
+		}
+	}
+
+	return nil
+}
+
+func (c *Config) validateTLSConfig() error {
+	if !c.TLS.Enabled {
+		return nil
+	}
+
+	// cert file path
+	if c.TLS.CertFile == "" {
+		return errors.New("cert_file is required when TLS is enabled")
+	}
+
+	// key file path
+	if c.TLS.KeyFile == "" {
+		return errors.New("key_file is required when TLS is enabled")
+	}
+
+	if _, err := os.Stat(c.TLS.CertFile); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("cert_file not found: %s", c.TLS.CertFile)
+		}
+		return fmt.Errorf("error accessing cert_file: %w", err)
+	}
+
+	if _, err := os.Stat(c.TLS.KeyFile); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("key_file not found: %s", c.TLS.KeyFile)
+		}
+		return fmt.Errorf("error accessing key_file: %w", err)
+	}
+
+	if c.Server.HTTPSPort <= 0 || c.Server.HTTPSPort > 65535 {
+		c.Server.HTTPSPort = 8443
+	}
+
+	if c.TLS.MinVersion != "" {
+		validVersions := map[string]bool{
+			"1.2": true,
+			"1.3": true,
+		}
+		if !validVersions[c.TLS.MinVersion] {
+			return fmt.Errorf("invalid min_version %q (supported: 1.2, 1.3)", c.TLS.MinVersion)
 		}
 	}
 

@@ -1,23 +1,22 @@
-version: "2.0.0"
-service: "isame-lb-dev"
+# Use this for local testing of HTTPS functionality
+version: "3.0.0"
+service: "isame-lb-dev-https"
 
 server:
   port: 8080
+  https_port: 8443
+  read_timeout: "15s"
+  write_timeout: "15s"
+  idle_timeout: "60s"
 
 upstreams:
   - name: "dev-backend"
-    algorithm: "least_connections"
+    algorithm: "round_robin"
     backends:
-      - url: "http://localhost:8081"
+      - url: "http://localhost:3000"
         weight: 1
-      - url: "http://localhost:8082"
+      - url: "http://localhost:3001"
         weight: 1
-      - url: "http://localhost:8083"
-        weight: 1
-    rate_limit:
-      enabled: true
-      requests_per_ip: 50
-      window_size: "1m"
 
 health:
   enabled: true
@@ -25,7 +24,7 @@ health:
   timeout: "3s"
   path: "/health"
   unhealthy_threshold: 2
-  healthy_threshold: 1
+  healthy_threshold: 2
 
 metrics:
   enabled: true
@@ -42,3 +41,9 @@ retry:
   max_attempts: 2
   initial_backoff: "50ms"
   max_backoff: "500ms"
+
+tls:
+  enabled: true
+  cert_file: "certs/dev/server.crt"
+  key_file: "certs/dev/server.key"
+  min_version: "1.2"

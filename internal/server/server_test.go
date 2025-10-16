@@ -178,3 +178,169 @@ func TestLoadBalancerServer_statusHandler(t *testing.T) {
 		}
 	}
 }
+
+func TestNewWithTLS(t *testing.T) {
+	cfg := &config.Config{
+		Service: "test-lb-tls",
+		Version: "1.0.0",
+		Server: config.ServerConfig{
+			Port:      8080,
+			HTTPSPort: 8443,
+		},
+		Upstreams: []config.Upstream{
+			{
+				Name:      "test-upstream",
+				Algorithm: "round_robin",
+				Backends: []config.Backend{
+					{URL: "http://backend1.com", Weight: 1},
+				},
+			},
+		},
+		Health: config.HealthConfig{
+			Enabled: false,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+		TLS: config.TLSConfig{
+			Enabled:  true,
+			CertFile: "../tls/testdata/server.crt",
+			KeyFile:  "../tls/testdata/server.key",
+		},
+	}
+
+	srv, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() with TLS returned error: %v", err)
+	}
+
+	if srv == nil {
+		t.Fatal("New() with TLS returned nil")
+	}
+
+	if srv.tlsManager == nil {
+		t.Error("New() with TLS should initialize TLS manager")
+	}
+}
+
+func TestNewWithTLSInvalidCert(t *testing.T) {
+	cfg := &config.Config{
+		Service: "test-lb-tls",
+		Version: "1.0.0",
+		Server: config.ServerConfig{
+			Port:      8080,
+			HTTPSPort: 8443,
+		},
+		Upstreams: []config.Upstream{
+			{
+				Name:      "test-upstream",
+				Algorithm: "round_robin",
+				Backends: []config.Backend{
+					{URL: "http://backend1.com", Weight: 1},
+				},
+			},
+		},
+		Health: config.HealthConfig{
+			Enabled: false,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+		TLS: config.TLSConfig{
+			Enabled:  true,
+			CertFile: "../tls/testdata/invalid.crt",
+			KeyFile:  "../tls/testdata/invalid.key",
+		},
+	}
+
+	_, err := New(cfg)
+	if err == nil {
+		t.Error("New() with invalid TLS cert should return error")
+	}
+}
+
+func TestNewWithTLSDisabled(t *testing.T) {
+	cfg := &config.Config{
+		Service: "test-lb",
+		Version: "1.0.0",
+		Server: config.ServerConfig{
+			Port: 8080,
+		},
+		Upstreams: []config.Upstream{
+			{
+				Name:      "test-upstream",
+				Algorithm: "round_robin",
+				Backends: []config.Backend{
+					{URL: "http://backend1.com", Weight: 1},
+				},
+			},
+		},
+		Health: config.HealthConfig{
+			Enabled: false,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+		TLS: config.TLSConfig{
+			Enabled: false,
+		},
+	}
+
+	srv, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() with TLS disabled returned error: %v", err)
+	}
+
+	if srv == nil {
+		t.Fatal("New() returned nil")
+	}
+
+	if srv.tlsManager != nil {
+		t.Error("New() with TLS disabled should not initialize TLS manager")
+	}
+}
+
+func TestNewWithTLSCustomMinVersion(t *testing.T) {
+	cfg := &config.Config{
+		Service: "test-lb-tls",
+		Version: "1.0.0",
+		Server: config.ServerConfig{
+			Port:      8080,
+			HTTPSPort: 8443,
+		},
+		Upstreams: []config.Upstream{
+			{
+				Name:      "test-upstream",
+				Algorithm: "round_robin",
+				Backends: []config.Backend{
+					{URL: "http://backend1.com", Weight: 1},
+				},
+			},
+		},
+		Health: config.HealthConfig{
+			Enabled: false,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+		TLS: config.TLSConfig{
+			Enabled:    true,
+			CertFile:   "../tls/testdata/server.crt",
+			KeyFile:    "../tls/testdata/server.key",
+			MinVersion: "1.3",
+		},
+	}
+
+	srv, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New() with TLS 1.3 returned error: %v", err)
+	}
+
+	if srv == nil {
+		t.Fatal("New() with TLS 1.3 returned nil")
+	}
+
+	if srv.tlsManager == nil {
+		t.Error("New() with TLS should initialize TLS manager")
+	}
+}

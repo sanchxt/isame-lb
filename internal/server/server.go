@@ -14,14 +14,17 @@ import (
 	"github.com/sanchxt/isame-lb/internal/health"
 	"github.com/sanchxt/isame-lb/internal/metrics"
 	"github.com/sanchxt/isame-lb/internal/proxy"
+	"github.com/sanchxt/isame-lb/internal/tls"
 )
 
 type LoadBalancerServer struct {
 	config        *config.Config
 	httpServer    *http.Server
+	httpsServer   *http.Server
 	healthChecker *health.Checker
 	metrics       *metrics.Collector
 	proxy         *proxy.Handler
+	tlsManager    *tls.Manager
 }
 
 func New(cfg *config.Config) (*LoadBalancerServer, error) {
@@ -34,11 +37,29 @@ func New(cfg *config.Config) (*LoadBalancerServer, error) {
 		return nil, fmt.Errorf("failed to create proxy handler: %w", err)
 	}
 
+	var tlsMgr *tls.Manager
+	if cfg.TLS.Enabled {
+		tlsMgr, err = tls.NewManager(tls.Config{
+			CertPath:     cfg.TLS.CertFile,
+			KeyPath:      cfg.TLS.KeyFile,
+			MinVersion:   cfg.TLS.MinVersion,
+			CipherSuites: cfg.TLS.CipherSuites,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize TLS: %w", err)
+		}
+
+		if err := tlsMgr.ValidateCertificate(); err != nil {
+			return nil, fmt.Errorf("certificate validation failed: %w", err)
+		}
+	}
+
 	return &LoadBalancerServer{
 		config:        cfg,
 		healthChecker: healthChecker,
 		metrics:       metricsCollector,
 		proxy:         proxyHandler,
+		tlsManager:    tlsMgr,
 	}, nil
 }
 
@@ -56,9 +77,9 @@ func (s *LoadBalancerServer) Start() error {
 	mux.HandleFunc("/status", s.statusHandler)
 	mux.Handle("/", s.proxy)
 
-	addr := fmt.Sprintf(":%d", s.config.Server.Port)
+	httpAddr := fmt.Sprintf(":%d", s.config.Server.Port)
 	s.httpServer = &http.Server{
-		Addr:           addr,
+		Addr:           httpAddr,
 		Handler:        mux,
 		ReadTimeout:    s.config.Server.ReadTimeout,
 		WriteTimeout:   s.config.Server.WriteTimeout,
@@ -66,13 +87,38 @@ func (s *LoadBalancerServer) Start() error {
 		MaxHeaderBytes: s.config.Server.MaxHeaderBytes,
 	}
 
-	log.Printf("Load balancer server starting on %s", addr)
-
+	log.Printf("HTTP server starting on %s", httpAddr)
 	go func() {
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+			log.Fatalf("HTTP server error: %v", err)
 		}
 	}()
+
+	if s.config.TLS.Enabled && s.tlsManager != nil {
+		httpsAddr := fmt.Sprintf(":%d", s.config.Server.HTTPSPort)
+
+		tlsConfig, err := s.tlsManager.GetTLSConfig()
+		if err != nil {
+			return fmt.Errorf("failed to get TLS config: %w", err)
+		}
+
+		s.httpsServer = &http.Server{
+			Addr:           httpsAddr,
+			Handler:        mux,
+			TLSConfig:      tlsConfig,
+			ReadTimeout:    s.config.Server.ReadTimeout,
+			WriteTimeout:   s.config.Server.WriteTimeout,
+			IdleTimeout:    s.config.Server.IdleTimeout,
+			MaxHeaderBytes: s.config.Server.MaxHeaderBytes,
+		}
+
+		log.Printf("HTTPS server starting on %s", httpsAddr)
+		go func() {
+			if err := s.httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("HTTPS server error: %v", err)
+			}
+		}()
+	}
 
 	s.waitForShutdown()
 
@@ -83,8 +129,16 @@ func (s *LoadBalancerServer) Shutdown(ctx context.Context) error {
 	log.Println("Shutting down load balancer...")
 
 	if s.httpServer != nil {
+		log.Println("Shutting down HTTP server...")
 		if err := s.httpServer.Shutdown(ctx); err != nil {
 			log.Printf("Error shutting down HTTP server: %v", err)
+		}
+	}
+
+	if s.httpsServer != nil {
+		log.Println("Shutting down HTTPS server...")
+		if err := s.httpsServer.Shutdown(ctx); err != nil {
+			log.Printf("Error shutting down HTTPS server: %v", err)
 		}
 	}
 
