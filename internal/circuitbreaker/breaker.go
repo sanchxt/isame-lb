@@ -11,18 +11,18 @@ type State string
 
 const (
 	StateClosed State = "closed"
-	StateOpen   State = "open"  
+	StateOpen   State = "open"
 )
 
 type backendState struct {
-	state            State
+	state               State
 	consecutiveFailures int
-	lastFailureTime  time.Time
+	lastFailureTime     time.Time
 }
 
 type CircuitBreaker struct {
-	config  config.CircuitBreakerConfig
-	mu      sync.RWMutex
+	config   config.CircuitBreakerConfig
+	mu       sync.RWMutex
 	backends map[string]*backendState
 }
 
@@ -89,7 +89,7 @@ func (cb *CircuitBreaker) RecordFailure(backendURL string) {
 	state, exists := cb.backends[backendURL]
 	if !exists {
 		state = &backendState{
-			state:            StateClosed,
+			state:               StateClosed,
 			consecutiveFailures: 0,
 		}
 		cb.backends[backendURL] = state

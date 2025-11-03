@@ -213,10 +213,6 @@ func TestGetTLSConfig_Success(t *testing.T) {
 	if tlsConfig.MinVersion != tls.VersionTLS12 {
 		t.Errorf("GetTLSConfig() MinVersion = %v, want %v", tlsConfig.MinVersion, tls.VersionTLS12)
 	}
-
-	if !tlsConfig.PreferServerCipherSuites {
-		t.Error("GetTLSConfig() PreferServerCipherSuites = false, want true")
-	}
 }
 
 func TestGetTLSConfig_WithCustomMinVersion(t *testing.T) {

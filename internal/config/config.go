@@ -35,10 +35,10 @@ type ServerConfig struct {
 
 // server group
 type Upstream struct {
-	Name        string           `yaml:"name" json:"name"`
-	Algorithm   string           `yaml:"algorithm" json:"algorithm"`
-	Backends    []Backend        `yaml:"backends" json:"backends"`
-	RateLimit   *RateLimitConfig `yaml:"rate_limit,omitempty" json:"rate_limit,omitempty"`
+	Name      string           `yaml:"name" json:"name"`
+	Algorithm string           `yaml:"algorithm" json:"algorithm"`
+	Backends  []Backend        `yaml:"backends" json:"backends"`
+	RateLimit *RateLimitConfig `yaml:"rate_limit,omitempty" json:"rate_limit,omitempty"`
 }
 
 // individual server
@@ -67,8 +67,8 @@ type MetricsConfig struct {
 // rate limiting config (per upstream)
 type RateLimitConfig struct {
 	Enabled       bool          `yaml:"enabled" json:"enabled"`
-	RequestsPerIP int           `yaml:"requests_per_ip" json:"requests_per_ip"`     // max requests per IP
-	WindowSize    time.Duration `yaml:"window_size" json:"window_size"`             // sliding window duration
+	RequestsPerIP int           `yaml:"requests_per_ip" json:"requests_per_ip"` // max requests per IP
+	WindowSize    time.Duration `yaml:"window_size" json:"window_size"`         // sliding window duration
 }
 
 // circuit breaker config

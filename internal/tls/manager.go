@@ -68,10 +68,9 @@ func (m *Manager) GetTLSConfig() (*tls.Config, error) {
 	}
 
 	config := &tls.Config{
-		Certificates:             []tls.Certificate{cert},
-		MinVersion:               m.minVersion,
-		PreferServerCipherSuites: true,
-		CipherSuites:             m.cipherSuites,
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   m.minVersion,
+		CipherSuites: m.cipherSuites,
 	}
 
 	return config, nil

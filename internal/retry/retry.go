@@ -46,11 +46,7 @@ func (r *Retrier) Do(fn func() error) error {
 }
 
 func (r *Retrier) ShouldRetry(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	return true
+	return err != nil
 }
 
 func (r *Retrier) calculateBackoff(attempt int) time.Duration {
