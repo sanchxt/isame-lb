@@ -1,36 +1,37 @@
 # Isame Load Balancer
 
-A production-ready HTTP/HTTPS load balancer written in Go, featuring SSL/TLS termination, multiple load balancing algorithms, circuit breaker pattern, retry logic with exponential backoff, per-client rate limiting, health checking, and comprehensive metrics collection.
+A HTTP/HTTPS load balancer written in Go with TLS termination, multiple load balancing algorithms (RR, WRR, LC), circuit breaker, retry logic, rate limiting, health checking, Prometheus metrics.
+
+## Features
+
+- Contains Round robin, weighted RR, least connections
+- Has TLS/SSL termination with configurable versions (1.2/1.3)
+- Has a circuit breaker pattern and exponential backoff retry
+- Per-client rate limiting with sliding window
+- Active monitoring with configurable thresholds
+- Contains prometheus metrics and status endpoints
+
+## Prerequisites
+
+- Go 1.22 or later
+- Make (optional)
 
 ## Quick Start
 
-### Prerequisites
-
-- Go 1.22 or later
-- Make (optional, but recommended)
-
-### Build and Run
-
 ```bash
-# Build the project
+# Build
 make build
 
-# run with example configuration
+# Run with example config
 ./bin/isame-lb -config=configs/example.yaml
 
-# run with development configuration
-./bin/isame-lb -config=configs/dev.yaml
-
-# run with TLS/HTTPS enabled (development)
+# Run with HTTPS enabled
+cd certs/dev && ./generate.sh  # Generate certificates
+cd ../..
 ./bin/isame-lb -config=configs/dev-tls.yaml
-
-# run with defaults (no upstreams - for testing)
-./bin/isame-lb
 ```
 
-### Configuration
-
-Create a YAML configuration file:
+## Configuration Example
 
 ```yaml
 version: "2.0.0"
@@ -41,15 +42,13 @@ server:
 
 upstreams:
   - name: "web-servers"
-    algorithm: "weighted_round_robin"  # round_robin, weighted_round_robin, least_connections
+    algorithm: "weighted_round_robin" # round_robin, weighted_round_robin, least_connections
     backends:
       - url: "http://localhost:3000"
-        weight: 3  # Higher weight = more traffic
+        weight: 3
       - url: "http://localhost:3001"
         weight: 2
-      - url: "http://localhost:3002"
-        weight: 1
-    rate_limit:  # Optional per-upstream rate limiting
+    rate_limit:
       enabled: true
       requests_per_ip: 100
       window_size: "1m"
@@ -67,189 +66,83 @@ metrics:
   port: 9090
   path: "/metrics"
 
-# Circuit breaker for failing backends
 circuit_breaker:
   enabled: true
   failure_threshold: 5
   timeout: "60s"
 
-# Automatic retry with exponential backoff
 retry:
   enabled: true
   max_attempts: 3
   initial_backoff: "100ms"
   max_backoff: "2s"
 
-# TLS/SSL termination (optional)
 tls:
   enabled: true
   cert_file: "certs/dev/server.crt"
   key_file: "certs/dev/server.key"
-  min_version: "1.2"  # "1.2" or "1.3"
-```
-
-### TLS/SSL Setup
-
-For HTTPS support:
-
-```bash
-# Generate development certificates
-cd certs/dev && ./generate.sh
-
-# Start with TLS enabled
-./bin/isame-lb -config=configs/dev-tls.yaml
-
-# Test HTTPS endpoint (with self-signed cert)
-curl -k https://localhost:8443/health
-```
-
-For production, use certificates from a trusted CA like Let's Encrypt. See [certs/README.md](certs/README.md) for details.
-
-### Development
-
-```bash
-# setup development environment
-make dev-setup
-
-# run tests
-make test
-
-# run linter
-make lint
-
-# format code
-make fmt
+  min_version: "1.2"
 ```
 
 ## API Endpoints
 
-### Load Balancer
+**Load Balancer (Port 8080/8443)**
 
-**HTTP (Port 8080 - default):**
-- `GET /health` - Load balancer health check
-- `GET /status` - Detailed status with backend health information
-- `/*` - All other requests are proxied to backend servers
+- `GET /health` - Health check
+- `GET /status` - Backend health status
+- `/*` - Proxy to backend servers
 
-**HTTPS (Port 8443 - when TLS enabled):**
-- Same endpoints as HTTP, accessed via HTTPS with TLS termination
+**Metrics Server (Port 9090)**
 
-### Metrics Server (Port 9090)
+- `GET /metrics` - Prometheus metrics
 
-- `GET /metrics` - Prometheus metrics endpoint
-- `GET /health` - Metrics server health check
-
-### Examples
+## Usage Examples
 
 ```bash
-# check load balancer health (HTTP)
+# Check health
 curl http://localhost:8080/health
 
-# check load balancer health (HTTPS with self-signed cert)
+# Check HTTPS
 curl -k https://localhost:8443/health
 
-# get detailed status
+# View status
 curl http://localhost:8080/status
 
-# view Prometheus metrics
+# View metrics
 curl http://localhost:9090/metrics
-
-# send request through load balancer
-curl http://localhost:8080/api/users
 ```
 
-## Project Structure
+---
 
-```txt
-├── cmd/
-│   ├── isame-lb/        # Main load balancer server
-│   └── isame-ctl/       # CLI tool (future phases)
-├── internal/
-│   ├── config/          # YAML configuration management
-│   ├── server/          # HTTP/HTTPS server orchestration
-│   ├── tls/             # TLS certificate management
-│   ├── balancer/        # Load balancing algorithms (RR, WRR, LC)
-│   ├── circuitbreaker/  # Circuit breaker pattern
-│   ├── retry/           # Retry logic with exponential backoff
-│   ├── ratelimit/       # Per-client sliding window rate limiter
-│   ├── health/          # Active health checking
-│   ├── metrics/         # Prometheus metrics collection
-│   └── proxy/           # HTTP reverse proxy with feature integration
-├── certs/               # TLS certificates
-│   ├── dev/             # Development self-signed certificates
-│   └── README.md        # Certificate management guide
-├── configs/             # Example YAML configurations
-│   ├── example.yaml     # Phase 3 feature showcase (with TLS)
-│   ├── dev-tls.yaml     # Development with HTTPS enabled
-│   └── dev.yaml         # Development configuration
-└── docs/                # Documentation
-```
+## Demo
 
-## Features
+### System Overview
 
-### Security
-- **TLS/SSL Termination**: HTTPS support with certificate management
-- **Configurable TLS Versions**: TLS 1.2 and 1.3 support
-- **Custom Cipher Suites**: Optional cipher suite configuration
-- **Dual HTTP/HTTPS**: Run both protocols simultaneously
+Full system running with load balancer, backend servers, and monitoring:
 
-### Load Balancing Algorithms
-- **Round-Robin**: Simple, equal distribution across backends
-- **Weighted Round-Robin**: Smooth distribution respecting backend weights (nginx-style)
-- **Least Connections**: Routes to backend with fewest active connections
+![System Overview](images/overview.png)
 
-### Reliability & Resilience
-- **Circuit Breaker**: Automatically stops sending traffic to failing backends
-- **Retry Logic**: Exponential backoff with jitter for transient failures
-- **Health Checking**: Active monitoring with configurable thresholds
+### Load Balancing in Action
 
-### Traffic Management
-- **Rate Limiting**: Per-client sliding window with configurable limits per upstream
-- **Request Routing**: Intelligent backend selection based on algorithm and health
+Weighted round-robin algorithm distributing traffic across backends (3:2:1 ratio):
 
-### Observability
-- **Prometheus Metrics**: Request counts, latencies, health status, connections
-- **Detailed Status**: Real-time backend health and connection information
-- **Comprehensive Logging**: All operations logged with context
+![Load Balancing Demo](images/lb-demo.png)
 
-## Architecture
+---
 
-The load balancer follows clean architecture principles:
-
-- **Modular Design**: Each component is in its own package with clear interfaces
-- **Configuration-Driven**: YAML-based configuration with validation
-- **Health-Aware**: Automatic backend health monitoring and failover
-- **Resilient**: Circuit breaker and retry logic for fault tolerance
-- **Rate-Limited**: Per-client traffic control with sliding window
-- **Observable**: Comprehensive Prometheus metrics
-- **Production-Ready**: Graceful shutdown, proper error handling, logging
-- **Thread-Safe**: All concurrent operations properly synchronized
-- **Well-Tested**: 82.8% average test coverage with race detection
-
-## Documentation
-
-- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) - Development phases and roadmap
-- [Project Structure](docs/PROJECT_STRUCTURE.md) - Detailed explanation of project structure and files
-
-## Testing
+## Development
 
 ```bash
-# run all tests
+# Run tests
 make test
 
-# run tests with coverage
-go test -cover ./...
+# Run linter
+make lint
 
-# run tests for a specific package
-go test ./internal/config
+# Format code
+make fmt
 ```
 
-## Contributing
+## License
 
-This project emphasizes clean, testable code. See the development phases for planned features.
-
-### Code Style
-
-- Use `gofmt` for formatting
-- Follow Go naming conventions
-- Write tests for all new functionality
-- Use golangci-lint for static analysis
+See [LICENSE](LICENSE) file for details.
