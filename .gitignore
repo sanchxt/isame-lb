@@ -9,7 +9,6 @@ bin/
 *.dll
 *.so
 *.dylib
-isame-lb
 
 # test binary
 *.test
