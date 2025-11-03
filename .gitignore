@@ -63,6 +63,11 @@ logs/
 *.cer
 *.der
 
+# But allow test certificates in testdata directories
+!internal/*/testdata/*.key
+!internal/*/testdata/*.crt
+!internal/*/testdata/*.pem
+
 # But allow generate.sh scripts
 !certs/*/generate.sh
 !*/generate.sh

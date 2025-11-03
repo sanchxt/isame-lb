@@ -1,0 +1,4 @@
+-----BEGIN CERTIFICATE-----
+This is not a valid certificate content
+Just some random text that will fail parsing
+-----END CERTIFICATE-----
