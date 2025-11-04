@@ -1,5 +1,5 @@
 version: "3.0.0"
-service: "isame-lb-with-tls"
+service: "isame-lb"
 
 server:
   port: 8080
