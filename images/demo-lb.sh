@@ -8,11 +8,6 @@ NC='\033[0m' # No Color
 
 clear
 
-echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║         Isame Load Balancer - Load Balancing Demo             ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-
 echo -e "${YELLOW}=== Configuration ===${NC}"
 echo "Algorithm: Weighted Round-Robin"
 echo "Backend Weights:"

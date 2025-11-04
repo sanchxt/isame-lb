@@ -53,7 +53,7 @@ logs/
 .env.local
 .env.*.local
 
-# TLS/SSL certificates and keys (NEVER commit these!)
+# TLS/SSL certificates and keys (IMP)
 *.key
 *.crt
 *.pem
@@ -63,11 +63,11 @@ logs/
 *.cer
 *.der
 
-# But allow test certificates in testdata directories
+# allow test certificates in testdata directories
 !internal/*/testdata/*.key
 !internal/*/testdata/*.crt
 !internal/*/testdata/*.pem
 
-# But allow generate.sh scripts
+# allow generate.sh scripts
 !certs/*/generate.sh
 !*/generate.sh
